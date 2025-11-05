@@ -1,0 +1,9 @@
+name: Greeting Workflow
+on:
+  workflow_dispatch: # Allows manual triggering
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Greet
+        run: echo "Hello from DEVO Agent test!"
