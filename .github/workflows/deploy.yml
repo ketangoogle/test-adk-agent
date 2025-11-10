@@ -33,9 +33,8 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
-    environment: ${{ inputs.environment }} # <-- ADD THIS LINE
+    environment: ${{ inputs.environment }}
     outputs:
-      image_url: ${{ steps.build_step.outputs.IMAGE_URL }}
       image_tag: ${{ steps.build_step.outputs.IMAGE_TAG }}
       image_sha: ${{ steps.build_step.outputs.IMAGE_SHA }}
     steps:
@@ -59,24 +58,22 @@ jobs:
       - name: Docker auth
         run: gcloud auth configure-docker ${{ inputs.region }}-docker.pkg.dev --quiet
 
-      - name: Construct Image URL and Build
+      - name: Build and Push Docker image
         id: build_step
         run: |
           REPO_NAME="devo-test-agent"
-          IMAGE_URL="${{ inputs.region }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
+          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
           IMAGE_SHA="${{ github.sha }}"
           IMAGE_TAG="${{ inputs.image_tag }}"
 
-          echo "IMAGE_URL=$IMAGE_URL" >> $GITHUB_ENV
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "IMAGE_SHA=$IMAGE_SHA" >> $GITHUB_ENV
-
-          echo "IMAGE_URL=$IMAGE_URL" >> $GITHUB_OUTPUT
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "IMAGE_SHA=$IMAGE_SHA" >> $GITHUB_OUTPUT
 
-          gcloud builds submit --tag "$IMAGE_URL:$IMAGE_SHA" --tag "$IMAGE_URL:$IMAGE_TAG" --project=${{ secrets.GCP_PROJECT_ID }} .
-          echo "Built and pushed $IMAGE_URL:$IMAGE_SHA and $IMAGE_URL:$IMAGE_TAG"
+          IMAGE_FULL="$IMAGE_URL_BASE:$IMAGE_SHA"
+          IMAGE_FULL_LATEST="$IMAGE_URL_BASE:$IMAGE_TAG"
+
+          gcloud builds submit --tag "$IMAGE_FULL" --tag "$IMAGE_FULL_LATEST" --project=${{ env.GCP_PROJECT_ID }} .
+          echo "Built and pushed $IMAGE_FULL and $IMAGE_FULL_LATEST"
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
@@ -87,10 +84,6 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
-    env:  # Set environment variables for the whole job
-      IMAGE_URL: ${{ needs.build-and-push.outputs.image_url }}
-      IMAGE_SHA: ${{ needs.build-and-push.outputs.image_sha }}
-      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -107,19 +100,26 @@ jobs:
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Deploy to Cloud Run
         run: |
-          IMAGE_TO_DEPLOY="${{ env.IMAGE_URL }}:${{ env.IMAGE_SHA }}"
+          REPO_NAME="devo-test-agent"
+          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
+          IMAGE_SHA="${{ needs.build-and-push.outputs.image_sha }}"
+          IMAGE_TO_DEPLOY="$IMAGE_URL_BASE:$IMAGE_SHA"
+
           echo "Deploying image: $IMAGE_TO_DEPLOY"
-          if [ -z "${{ env.IMAGE_URL }}" ]; then
-            echo "Error: IMAGE_URL is empty!"
+          if [ -z "$IMAGE_SHA" ]; then
+            echo "Error: IMAGE_SHA is empty!"
             exit 1
           fi
+
           gcloud run deploy ${{ inputs.service_name }} \
             --image=$IMAGE_TO_DEPLOY \
             --platform=managed \
             --region=${{ inputs.region }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
             --allow-unauthenticated --quiet
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
