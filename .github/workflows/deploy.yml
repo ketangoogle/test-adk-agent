@@ -83,10 +83,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: ${{ inputs.environment }} # This job already had it
+    environment: ${{ inputs.environment }}
     permissions:
       contents: 'read'
       id-token: 'write'
+    env:  # Set environment variables for the whole job
+      IMAGE_URL: ${{ needs.build-and-push.outputs.image_url }}
+      IMAGE_SHA: ${{ needs.build-and-push.outputs.image_sha }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -103,17 +107,19 @@ jobs:
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Deploy to Cloud Run
         run: |
-          IMAGE_TO_DEPLOY="${{ needs.build-and-push.outputs.image_url }}:${{ needs.build-and-push.outputs.image_sha }}"
+          IMAGE_TO_DEPLOY="${{ env.IMAGE_URL }}:${{ env.IMAGE_SHA }}"
           echo "Deploying image: $IMAGE_TO_DEPLOY"
+          if [ -z "${{ env.IMAGE_URL }}" ]; then
+            echo "Error: IMAGE_URL is empty!"
+            exit 1
+          fi
           gcloud run deploy ${{ inputs.service_name }} \
             --image=$IMAGE_TO_DEPLOY \
             --platform=managed \
             --region=${{ inputs.region }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
             --allow-unauthenticated --quiet
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
