@@ -62,7 +62,7 @@ jobs:
         id: build_step
         run: |
           REPO_NAME="devo-test-agent"
-          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
+          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
           IMAGE_SHA="${{ github.sha }}"
           IMAGE_TAG="${{ inputs.image_tag }}"
 
@@ -72,7 +72,7 @@ jobs:
           IMAGE_FULL="$IMAGE_URL_BASE:$IMAGE_SHA"
           IMAGE_FULL_LATEST="$IMAGE_URL_BASE:$IMAGE_TAG"
 
-          gcloud builds submit --tag "$IMAGE_FULL" --tag "$IMAGE_FULL_LATEST" --project=${{ env.GCP_PROJECT_ID }} .
+          gcloud builds submit --tag "$IMAGE_FULL" --tag "$IMAGE_FULL_LATEST" --project=${{ secrets.GCP_PROJECT_ID }} .
           echo "Built and pushed $IMAGE_FULL and $IMAGE_FULL_LATEST"
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
