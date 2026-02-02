@@ -85,24 +85,23 @@ jobs:
           IMAGE_WITH_SHA_TAG="$IMAGE_URL_BASE:$IMAGE_SHA"
 
           echo "----------------------------------------------------"
-          echo "Building and pushing: $IMAGE_WITH_INPUT_TAG"
+          echo "Building and pushing with tags:"
+          echo " - $IMAGE_WITH_INPUT_TAG"
+          echo " - $IMAGE_WITH_SHA_TAG"
           echo "----------------------------------------------------"
-          # Build and push, primarily tagging with the input tag (e.g., latest)
-          gcloud builds submit --tag "$IMAGE_WITH_INPUT_TAG" --project=${PROJECT_ID} .
 
-          echo "----------------------------------------------------"
-          echo "Adding Git SHA tag to the pushed image..."
-          echo "Source: $IMAGE_WITH_INPUT_TAG"
-          echo "New Tag: $IMAGE_WITH_SHA_TAG"
-          echo "----------------------------------------------------"
-          # Add the Git SHA tag to the image version we just tagged with INPUT_TAG
-          gcloud artifacts docker tags add "$IMAGE_WITH_INPUT_TAG" "$IMAGE_WITH_SHA_TAG" --project=${PROJECT_ID}
-          echo "Added Git SHA tag."
+          # Build and push BOTH tags atomically
+          gcloud builds submit \
+            --tag "$IMAGE_WITH_INPUT_TAG" \
+            --tag "$IMAGE_WITH_SHA_TAG" \
+            --project="${PROJECT_ID}" \
+            .
 
           echo "----------------------------------------------------"
           echo "Verifying tags in Artifact Registry:"
-          gcloud artifacts docker images list "${IMAGE_URL_BASE}" --include-tags --project=${PROJECT_ID}
+          gcloud artifacts docker images list "${IMAGE_URL_BASE}" --include-tags --project="${PROJECT_ID}"
           echo "----------------------------------------------------"
+
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
