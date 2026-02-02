@@ -14,45 +14,44 @@ variable "region" {
   default     = "us-central1"
 }
 
-variable "bucket_name_prefix" {
-  description = "Prefix for the log bucket name"
+variable "bucket_prefix" {
+  description = "User-provided prefix for the temp bucket name"
   type        = string
-  default     = "app-logs"
+  default     = "tf-agent-temp"
 }
 
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-resource "google_storage_bucket" "log_bucket" {
-  name          = "${var.bucket_name_prefix}-${random_id.bucket_suffix.hex}"
+resource "google_storage_bucket" "temp_bucket" {
+  name          = "${var.bucket_prefix}-${random_id.bucket_suffix.hex}"
   project       = var.project_id
   location      = var.region
-  force_destroy = false # Set to true only if you want to allow deletion of non-empty buckets
+  force_destroy = true # Important for easy cleanup in a prototype
 
   uniform_bucket_level_access = true
 
-  lifecycle {
-    prevent_destroy = true # Safety feature
-  }
-
   labels = {
-    env  = "logs"
-    iac  = "terraform"
+    env        = "prototype"
+    iac        = "terraform-agent"
+    created-by = "iac-agent"
   }
 }
 
 output "bucket_name" {
-  value = google_storage_bucket.log_bucket.name
+  description = "The full name of the created temporary bucket"
+  value       = google_storage_bucket.temp_bucket.name
 }
 
 output "bucket_url" {
-  value = google_storage_bucket.log_bucket.url
-}
-terraform {
-  backend "gcs" {
-    bucket = "devops-agent-logs-08122b60"
-    prefix = "terraform/state"
-  }
+  description = "The URL of the created temporary bucket"
+  value       = google_storage_bucket.temp_bucket.url
 }
 
+terraform {
+  backend "gcs" {
+    bucket = "devops-agent-logs-08122b60" # Your existing backend bucket
+    prefix = "terraform/state/temp_bucket_prototype" # Different prefix for isolation
+  }
+}
