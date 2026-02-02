@@ -37,6 +37,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.build_step.outputs.IMAGE_TAG }}
       image_sha: ${{ steps.build_step.outputs.IMAGE_SHA }}
+      image_url_base: ${{ steps.build_step.outputs.IMAGE_URL_BASE }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,18 +63,47 @@ jobs:
         id: build_step
         run: |
           REPO_NAME="devo-test-agent"
-          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
+          PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
+          REGION="${{ inputs.region }}"
+          SERVICE_NAME="${{ inputs.service_name }}"
+          IMAGE_URL_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}"
+          
           IMAGE_SHA="${{ github.sha }}"
-          IMAGE_TAG="${{ inputs.image_tag }}"
+          INPUT_TAG="${{ inputs.image_tag }}" # e.g., latest
 
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          if [ -z "$IMAGE_SHA" ]; then
+            echo "Error: github.sha is empty!"
+            exit 1
+          fi
+
+          # Output variables for the next job
+          echo "IMAGE_TAG=$INPUT_TAG" >> $GITHUB_OUTPUT
           echo "IMAGE_SHA=$IMAGE_SHA" >> $GITHUB_OUTPUT
+          echo "IMAGE_URL_BASE=$IMAGE_URL_BASE" >> $GITHUB_OUTPUT
 
-          IMAGE_FULL="$IMAGE_URL_BASE:$IMAGE_SHA"
-          IMAGE_FULL_LATEST="$IMAGE_URL_BASE:$IMAGE_TAG"
+          IMAGE_TAG_SHA="$IMAGE_URL_BASE:$IMAGE_SHA"
+          IMAGE_TAG_INPUT="$IMAGE_URL_BASE:$INPUT_TAG"
 
-          gcloud builds submit --tag "$IMAGE_FULL" --tag "$IMAGE_FULL_LATEST" --project=${{ secrets.GCP_PROJECT_ID }} .
-          echo "Built and pushed $IMAGE_FULL and $IMAGE_FULL_LATEST"
+          echo "----------------------------------------------------"
+          echo "Project ID: $PROJECT_ID"
+          echo "Region: $REGION"
+          echo "Service Name: $SERVICE_NAME"
+          echo "Git SHA: $IMAGE_SHA"
+          echo "Input Tag: $INPUT_TAG"
+          echo "----------------------------------------------------"
+          echo "Building and Pushing tags:"
+          echo "1: $IMAGE_TAG_SHA"
+          echo "2: $IMAGE_TAG_INPUT"
+          echo "----------------------------------------------------"
+
+          # Build and push using Cloud Build
+          gcloud builds submit --tag "$IMAGE_TAG_SHA" --tag "$IMAGE_TAG_INPUT" --project=${PROJECT_ID} .
+
+          echo "----------------------------------------------------"
+          echo "Build and push process finished."
+          echo "Verifying tags in Artifact Registry:"
+          gcloud artifacts docker images list "${IMAGE_URL_BASE}" --include-tags --project=${PROJECT_ID}
+          echo "----------------------------------------------------"
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
@@ -104,14 +134,13 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          REPO_NAME="devo-test-agent"
-          IMAGE_URL_BASE="${{ inputs.region }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${{ inputs.service_name }}"
+          IMAGE_URL_BASE="${{ needs.build-and-push.outputs.image_url_base }}"
           IMAGE_SHA="${{ needs.build-and-push.outputs.image_sha }}"
           IMAGE_TO_DEPLOY="$IMAGE_URL_BASE:$IMAGE_SHA"
 
           echo "Deploying image: $IMAGE_TO_DEPLOY"
           if [ -z "$IMAGE_SHA" ]; then
-            echo "Error: IMAGE_SHA is empty!"
+            echo "Error: IMAGE_SHA from outputs is empty!"
             exit 1
           fi
 
