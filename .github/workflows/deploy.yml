@@ -15,7 +15,7 @@ on:
         - staging
         - production
       image_tag:
-        description: 'Image tag'
+        description: 'Primary image tag (e.g., latest)'
         required: false
         default: 'latest'
       service_name:
@@ -81,26 +81,25 @@ jobs:
           echo "IMAGE_SHA=$IMAGE_SHA" >> $GITHUB_OUTPUT
           echo "IMAGE_URL_BASE=$IMAGE_URL_BASE" >> $GITHUB_OUTPUT
 
-          IMAGE_TAG_SHA="$IMAGE_URL_BASE:$IMAGE_SHA"
-          IMAGE_TAG_INPUT="$IMAGE_URL_BASE:$INPUT_TAG"
+          IMAGE_WITH_INPUT_TAG="$IMAGE_URL_BASE:$INPUT_TAG"
+          IMAGE_WITH_SHA_TAG="$IMAGE_URL_BASE:$IMAGE_SHA"
 
           echo "----------------------------------------------------"
-          echo "Project ID: $PROJECT_ID"
-          echo "Region: $REGION"
-          echo "Service Name: $SERVICE_NAME"
-          echo "Git SHA: $IMAGE_SHA"
-          echo "Input Tag: $INPUT_TAG"
+          echo "Building and pushing: $IMAGE_WITH_INPUT_TAG"
           echo "----------------------------------------------------"
-          echo "Building and Pushing tags:"
-          echo "1: $IMAGE_TAG_SHA"
-          echo "2: $IMAGE_TAG_INPUT"
-          echo "----------------------------------------------------"
-
-          # Build and push using Cloud Build
-          gcloud builds submit --tag "$IMAGE_TAG_SHA" --tag "$IMAGE_TAG_INPUT" --project=${PROJECT_ID} .
+          # Build and push, primarily tagging with the input tag (e.g., latest)
+          gcloud builds submit --tag "$IMAGE_WITH_INPUT_TAG" --project=${PROJECT_ID} .
 
           echo "----------------------------------------------------"
-          echo "Build and push process finished."
+          echo "Adding Git SHA tag to the pushed image..."
+          echo "Source: $IMAGE_WITH_INPUT_TAG"
+          echo "New Tag: $IMAGE_WITH_SHA_TAG"
+          echo "----------------------------------------------------"
+          # Add the Git SHA tag to the image version we just tagged with INPUT_TAG
+          gcloud artifacts docker tags add "$IMAGE_WITH_INPUT_TAG" "$IMAGE_WITH_SHA_TAG" --project=${PROJECT_ID}
+          echo "Added Git SHA tag."
+
+          echo "----------------------------------------------------"
           echo "Verifying tags in Artifact Registry:"
           gcloud artifacts docker images list "${IMAGE_URL_BASE}" --include-tags --project=${PROJECT_ID}
           echo "----------------------------------------------------"
@@ -148,6 +147,6 @@ jobs:
             --image=$IMAGE_TO_DEPLOY \
             --platform=managed \
             --region=${{ inputs.region }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} 
+            --project=${{ secrets.GCP_PROJECT_ID }}
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
